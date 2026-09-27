@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f7faf8">
+  <meta name="color-scheme" content="light">
+  <title>Estudos — Dashboard</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__inner">
+      <button class="icon-button" id="menuButton" type="button" aria-label="Abrir menu" aria-controls="appDrawer" aria-expanded="false">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <div class="brand" aria-label="Estudos">
+        <span class="brand__mark" aria-hidden="true">E</span>
+        <span class="brand__name">Estudos</span>
+      </div>
+      <span class="topbar__page" id="pageLabel">Dashboard</span>
+    </div>
+  </header>
+
+  <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
+  <aside class="drawer" id="appDrawer" aria-hidden="true" aria-label="Navegação principal">
+    <div class="drawer__header">
+      <div class="brand">
+        <span class="brand__mark" aria-hidden="true">E</span>
+        <span class="brand__name">Estudos</span>
+      </div>
+      <button class="icon-button" id="closeDrawerButton" type="button" aria-label="Fechar menu">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <nav class="drawer__nav">
+      <button class="nav-item is-active" type="button" data-view="dashboard">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v10h-6zM4 14h6v6H4zM14 18h6v2h-6z"/></svg>
+        <span>Dashboard</span>
+      </button>
+      <button class="nav-item" type="button" data-view="updates">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg>
+        <span>Atualização das aulas</span>
+      </button>
+    </nav>
+    <div class="drawer__footer">Progresso salvo neste navegador.</div>
+  </aside>
+
+  <main class="shell">
+    <section class="view is-active" id="dashboardView" data-view-panel="dashboard" aria-labelledby="dashboardTitle">
+      <div class="page-heading">
+        <p class="current-date" id="currentDate">—</p>
+        <h1 class="sr-only" id="dashboardTitle">Dashboard de estudos</h1>
+      </div>
+
+      <section class="overview-grid" aria-label="Resumo do dia e progresso geral">
+        <article class="panel today-panel">
+          <div class="panel__heading">
+            <div>
+              <p class="eyebrow">Agenda</p>
+              <h2>Matérias de hoje</h2>
+            </div>
+            <span class="count-badge" id="todayCount">0</span>
+          </div>
+          <div class="today-list" id="todayList"></div>
+        </article>
+
+        <article class="panel progress-panel">
+          <div class="panel__heading">
+            <div>
+              <p class="eyebrow">Visão geral</p>
+              <h2>Progresso geral</h2>
+            </div>
+          </div>
+          <div class="progress-overview">
+            <div class="donut donut--large" id="generalDonut" role="img" aria-label="0% do total concluído">
+              <div class="donut__center">
+                <strong id="generalPercent">0%</strong>
+                <span>concluído</span>
+              </div>
+            </div>
+            <dl class="stats-list">
+              <div><dt>Disciplinas</dt><dd id="disciplineCount">0</dd></div>
+              <div><dt>Total de aulas</dt><dd id="lessonCount">0</dd></div>
+              <div><dt>Aulas concluídas</dt><dd id="completedCount">0</dd></div>
+            </dl>
+          </div>
+        </article>
+      </section>
+
+      <section class="focus-card" aria-labelledby="focusTitle">
+        <div class="focus-card__copy">
+          <p class="eyebrow">Concentração</p>
+          <h2 id="focusTitle">Foco</h2>
+          <p>Um ciclo curto para estudar sem transformar o cronômetro em mais uma tarefa.</p>
+        </div>
+        <div class="timer" aria-live="polite" aria-atomic="true">
+          <span id="timerDisplay">25:00</span>
+        </div>
+        <div class="timer-actions">
+          <button class="button button--primary" id="timerToggle" type="button">Iniciar</button>
+          <button class="button button--secondary" id="timerReset" type="button">Reiniciar</button>
+        </div>
+      </section>
+
+      <section class="disciplines-section" aria-labelledby="disciplinesTitle">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Panorama</p>
+            <h2 id="disciplinesTitle">Disciplinas</h2>
+          </div>
+          <p>Ordenadas por maior percentual concluído.</p>
+        </div>
+        <div class="discipline-grid" id="disciplineGrid"></div>
+      </section>
+    </section>
+
+    <section class="view" id="updatesView" data-view-panel="updates" aria-labelledby="updatesTitle" hidden>
+      <div class="updates-heading">
+        <div>
+          <p class="eyebrow">Controle</p>
+          <h1 id="updatesTitle">Atualização das aulas</h1>
+          <p>Marque o que já foi concluído. O dashboard é atualizado imediatamente.</p>
+        </div>
+        <button class="button button--danger-quiet" id="markEverythingButton" type="button">Marcar tudo concluído</button>
+      </div>
+
+      <div class="updates-toolbar" role="search">
+        <label class="search-field">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/></svg>
+          <span class="sr-only">Buscar disciplina</span>
+          <input id="disciplineSearch" type="search" placeholder="Buscar disciplina" autocomplete="off">
+        </label>
+        <span class="toolbar-summary" id="updateSummary">0 de 0 aulas concluídas</span>
+      </div>
+
+      <div class="updates-list" id="updatesList"></div>
+      <p class="empty-state" id="updatesEmpty" hidden>Nenhuma disciplina encontrada.</p>
+    </section>
+  </main>
+
+  <div class="modal-backdrop" id="modalBackdrop" hidden></div>
+  <section class="modal" id="sequenceModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalDescription" hidden>
+    <button class="modal__close icon-button" id="modalCloseButton" type="button" aria-label="Fechar">
+      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <p class="eyebrow">Atualização em sequência</p>
+    <h2 id="modalTitle">Marcar aulas anteriores?</h2>
+    <p id="modalDescription">—</p>
+    <div class="modal__actions">
+      <button class="button button--primary" id="modalMarkRange" type="button">Sim, marcar sequência</button>
+      <button class="button button--secondary" id="modalMarkSingle" type="button">Só esta aula</button>
+      <button class="button button--ghost" id="modalCancel" type="button">Cancelar</button>
+    </div>
+  </section>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
