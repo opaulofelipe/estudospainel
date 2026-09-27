@@ -36,6 +36,7 @@
   let pendingConfirmAction = null;
   let timerState = loadTimer();
   let timerInterval = null;
+  const openSubjects = new Set();
 
   let subjects = [];
 
@@ -261,7 +262,8 @@
         </div>`;
       }).join('');
 
-      return `<details class="subject-group" open>
+      const isOpen = openSubjects.has(subject.name);
+      return `<details class="subject-group"${isOpen ? ' open' : ''}>
         <summary class="subject-summary">
           <div class="subject-summary-main">
             <h2>${html(subject.name)}</h2>
@@ -273,7 +275,9 @@
           </div>
           <div class="subject-actions">
             <button class="group-action" type="button" data-complete-subject="${html(subject.name)}">${allDone ? 'Desmarcar tudo' : 'Marcar tudo'}</button>
-            <svg class="chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <button class="subject-toggle" type="button" data-toggle-subject="${html(subject.name)}" aria-label="${isOpen ? 'Fechar' : 'Abrir'} aulas de ${html(subject.name)}" aria-expanded="${isOpen}">
+              <svg class="chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
           </div>
         </summary>
         <div class="lesson-list">${lessonsMarkup}</div>
@@ -465,11 +469,30 @@
   $('#updateList').addEventListener('click', event => {
     const button = event.target.closest('.check-button');
     if (button) return handleLessonToggle(button);
+
+    const toggleButton = event.target.closest('[data-toggle-subject]');
+    if (toggleButton) {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const name = toggleButton.dataset.toggleSubject;
+      if (openSubjects.has(name)) openSubjects.delete(name);
+      else openSubjects.add(name);
+
+      renderUpdate();
+      return;
+    }
+
     const subjectButton = event.target.closest('[data-complete-subject]');
     if (subjectButton) {
       event.preventDefault();
       event.stopPropagation();
       toggleSubject(subjectButton.dataset.completeSubject);
+      return;
+    }
+
+    if (event.target.closest('.subject-summary')) {
+      event.preventDefault();
     }
   });
 
