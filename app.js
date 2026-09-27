@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const lessons = Array.isArray(window.EMBEDDED_STUDY_DATA) ? window.EMBEDDED_STUDY_DATA : [];
+  let lessons = [];
   const STORAGE_KEY = 'estudos2026:completed:v1';
   const TIMER_KEY = 'estudos2026:timer:v1';
   const DEFAULT_TIMER_SECONDS = 25 * 60;
@@ -37,7 +37,7 @@
   let timerState = loadTimer();
   let timerInterval = null;
 
-  const subjects = buildSubjects(lessons);
+  let subjects = [];
 
   function buildSubjects(source) {
     const map = new Map();
@@ -49,6 +49,72 @@
       subject.lessons.push({ ...lesson, absoluteIndex, id: lessonId(lesson), index: subject.lessons.length });
     });
     return [...map.values()];
+  }
+
+  function getRowValue(row, expectedHeader) {
+    const expected = normalize(expectedHeader).trim();
+    for (const [key, value] of Object.entries(row)) {
+      if (normalize(String(key)).trim() === expected) return value;
+    }
+    return '';
+  }
+
+  function parseWorkbook(arrayBuffer) {
+    if (!window.XLSX) throw new Error('Biblioteca XLSX indisponível.');
+
+    const workbook = window.XLSX.read(arrayBuffer, { type: 'array' });
+    const parsedLessons = [];
+
+    workbook.SheetNames.forEach(sheetName => {
+      const sheet = workbook.Sheets[sheetName];
+      if (!sheet) return;
+
+      const rows = window.XLSX.utils.sheet_to_json(sheet, {
+        defval: '',
+        raw: false
+      });
+
+      rows.forEach(row => {
+        const aula = String(getRowValue(row, 'Aula') ?? '').trim();
+        const disciplina = String(getRowValue(row, 'Disciplina') ?? '').trim();
+        const dia = String(getRowValue(row, 'Dia') ?? '').trim();
+
+        if (!aula || !disciplina) return;
+        parsedLessons.push({ aula, disciplina, dia });
+      });
+    });
+
+    if (!parsedLessons.length) {
+      throw new Error('Nenhuma aula válida foi encontrada em estudos2026.xlsx.');
+    }
+
+    return parsedLessons;
+  }
+
+  async function loadLessonsFromSpreadsheet() {
+    const url = `estudos2026.xlsx?v=${Date.now()}`;
+    const response = await fetch(url, { cache: 'no-store' });
+
+    if (!response.ok) {
+      throw new Error(`Falha ao carregar a planilha (HTTP ${response.status}).`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    return parseWorkbook(arrayBuffer);
+  }
+
+  async function initializeData() {
+    $('#topbarStatus').textContent = 'Carregando planilha…';
+
+    try {
+      lessons = await loadLessonsFromSpreadsheet();
+    } catch (error) {
+      console.warn('Não foi possível ler estudos2026.xlsx; usando data.js como fallback.', error);
+      lessons = Array.isArray(window.EMBEDDED_STUDY_DATA) ? window.EMBEDDED_STUDY_DATA : [];
+    }
+
+    subjects = buildSubjects(lessons);
+    refreshAll();
   }
 
   function loadCompleted() {
@@ -427,5 +493,5 @@
 
   renderTimer();
   if (timerState.running) startTimerInterval();
-  refreshAll();
+  initializeData();
 })();
