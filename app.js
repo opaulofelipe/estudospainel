@@ -1,499 +1,431 @@
 (() => {
   'use strict';
 
-  const DATA = Array.isArray(window.STUDY_DATA) ? window.STUDY_DATA : [];
-  const STORAGE_KEY = 'estudos-dashboard-state-v1';
-  const TIMER_SECONDS = 25 * 60;
+  const lessons = Array.isArray(window.EMBEDDED_STUDY_DATA) ? window.EMBEDDED_STUDY_DATA : [];
+  const STORAGE_KEY = 'estudos2026:completed:v1';
+  const TIMER_KEY = 'estudos2026:timer:v1';
+  const DEFAULT_TIMER_SECONDS = 25 * 60;
 
-  const dayMap = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-  const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-
-  const state = loadState();
-  let currentView = 'dashboard';
-  let timerRemaining = TIMER_SECONDS;
-  let timerRunning = false;
-  let timerId = null;
-  let modalContext = null;
-  let lastModalTrigger = null;
-  let toastTimer = null;
-
-  const $ = (selector, root = document) => root.querySelector(selector);
-  const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
-
-  const els = {
-    currentDate: $('#currentDate'),
-    todayList: $('#todayList'),
-    todayCount: $('#todayCount'),
-    generalDonut: $('#generalDonut'),
-    generalPercent: $('#generalPercent'),
-    disciplineCount: $('#disciplineCount'),
-    lessonCount: $('#lessonCount'),
-    completedCount: $('#completedCount'),
-    disciplineGrid: $('#disciplineGrid'),
-    timerDisplay: $('#timerDisplay'),
-    timerToggle: $('#timerToggle'),
-    timerReset: $('#timerReset'),
-    menuButton: $('#menuButton'),
-    closeDrawerButton: $('#closeDrawerButton'),
-    drawer: $('#appDrawer'),
-    drawerBackdrop: $('#drawerBackdrop'),
-    pageLabel: $('#pageLabel'),
-    navItems: $$('.nav-item'),
-    updatesView: $('#updatesView'),
-    dashboardView: $('#dashboardView'),
-    updatesList: $('#updatesList'),
-    disciplineSearch: $('#disciplineSearch'),
-    updateSummary: $('#updateSummary'),
-    updatesEmpty: $('#updatesEmpty'),
-    markEverythingButton: $('#markEverythingButton'),
-    modal: $('#sequenceModal'),
-    modalBackdrop: $('#modalBackdrop'),
-    modalDescription: $('#modalDescription'),
-    modalMarkRange: $('#modalMarkRange'),
-    modalMarkSingle: $('#modalMarkSingle'),
-    modalCancel: $('#modalCancel'),
-    modalCloseButton: $('#modalCloseButton'),
-    toast: $('#toast')
+  const dayAliases = {
+    domingo: 0,
+    segunda: 1,
+    'segunda-feira': 1,
+    terça: 2,
+    terca: 2,
+    'terça-feira': 2,
+    'terca-feira': 2,
+    quarta: 3,
+    'quarta-feira': 3,
+    quinta: 4,
+    'quinta-feira': 4,
+    sexta: 5,
+    'sexta-feira': 5,
+    sábado: 6,
+    sabado: 6
   };
 
-  function loadState() {
+  const $ = (selector, scope = document) => scope.querySelector(selector);
+  const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
+  const normalize = (value = '') => value.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const lessonId = (lesson) => `${lesson.disciplina}::${lesson.aula}`;
+  const html = (value = '') => String(value).replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+
+  let completed = loadCompleted();
+  let currentPage = 'dashboard';
+  let pendingBatch = null;
+  let pendingConfirmAction = null;
+  let timerState = loadTimer();
+  let timerInterval = null;
+
+  const subjects = buildSubjects(lessons);
+
+  function buildSubjects(source) {
+    const map = new Map();
+    source.forEach((lesson, absoluteIndex) => {
+      if (!map.has(lesson.disciplina)) {
+        map.set(lesson.disciplina, { name: lesson.disciplina, day: lesson.dia, lessons: [] });
+      }
+      const subject = map.get(lesson.disciplina);
+      subject.lessons.push({ ...lesson, absoluteIndex, id: lessonId(lesson), index: subject.lessons.length });
+    });
+    return [...map.values()];
+  }
+
+  function loadCompleted() {
     try {
-      const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      return parsed && typeof parsed === 'object' ? parsed : {};
+      const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      return new Set(Array.isArray(parsed) ? parsed : []);
     } catch {
-      return {};
+      return new Set();
     }
   }
 
-  function saveState() {
+  function saveCompleted() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([...completed]));
+  }
+
+  function loadTimer() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      const parsed = JSON.parse(localStorage.getItem(TIMER_KEY) || '{}');
+      if (typeof parsed.remaining !== 'number') return { remaining: DEFAULT_TIMER_SECONDS, running: false, endsAt: null };
+      if (parsed.running && parsed.endsAt) {
+        const remaining = Math.max(0, Math.ceil((parsed.endsAt - Date.now()) / 1000));
+        return { remaining, running: remaining > 0, endsAt: remaining > 0 ? parsed.endsAt : null };
+      }
+      return { remaining: Math.max(0, parsed.remaining), running: false, endsAt: null };
     } catch {
-      showToast('Não foi possível salvar o progresso neste navegador.');
+      return { remaining: DEFAULT_TIMER_SECONDS, running: false, endsAt: null };
     }
   }
 
-  function ensureDisciplineState(id) {
-    if (!state[id] || !Array.isArray(state[id].completed)) state[id] = { completed: [] };
-    state[id].completed = [...new Set(state[id].completed.map(Number).filter(Number.isFinite))].sort((a, b) => a - b);
-    return state[id];
+  function saveTimer() {
+    localStorage.setItem(TIMER_KEY, JSON.stringify(timerState));
   }
 
-  function completedSet(id) {
-    return new Set(ensureDisciplineState(id).completed);
+  function subjectProgress(subject) {
+    const done = subject.lessons.reduce((sum, lesson) => sum + (completed.has(lesson.id) ? 1 : 0), 0);
+    const total = subject.lessons.length;
+    return { done, total, percent: total ? Math.round((done / total) * 100) : 0 };
   }
 
-  function getCompletedCount(discipline) {
-    const valid = ensureDisciplineState(discipline.id).completed.filter(n => n >= 1 && n <= discipline.totalLessons);
-    return valid.length;
+  function overallProgress() {
+    const total = lessons.length;
+    const validIds = new Set(lessons.map(lessonId));
+    const done = [...completed].filter(id => validIds.has(id)).length;
+    return { done, total, percent: total ? Math.round((done / total) * 100) : 0 };
   }
 
-  function getPercent(discipline) {
-    if (!discipline.totalLessons) return 0;
-    return Math.round((getCompletedCount(discipline) / discipline.totalLessons) * 100);
+  function nextLesson(subject) {
+    let highestCompleted = -1;
+    subject.lessons.forEach((lesson, index) => {
+      if (completed.has(lesson.id)) highestCompleted = Math.max(highestCompleted, index);
+    });
+    return subject.lessons[highestCompleted + 1] || null;
   }
 
-  function getLessonTitle(discipline, lessonNumber) {
-    const explicit = discipline.lessonTitles?.[lessonNumber - 1];
-    return explicit && String(explicit).trim() ? explicit : `Aula ${lessonNumber}`;
+  function formatDate(date) {
+    const weekdays = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+    const months = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    return `${weekdays[date.getDay()]}, ${date.getDate()} de ${months[date.getMonth()]}`;
   }
 
-  function getNextLesson(discipline) {
-    const completed = ensureDisciplineState(discipline.id).completed;
-    if (!completed.length) return { number: 1, title: getLessonTitle(discipline, 1) };
-    const last = Math.max(...completed);
-    const next = last + 1;
-    if (next > discipline.totalLessons) return null;
-    return { number: next, title: getLessonTitle(discipline, next) };
+  function todaySubjects() {
+    const day = new Date().getDay();
+    return subjects.filter(subject => dayAliases[normalize(subject.day)] === day);
   }
 
-  function totals() {
-    const totalLessons = DATA.reduce((sum, d) => sum + Number(d.totalLessons || 0), 0);
-    const completed = DATA.reduce((sum, d) => sum + getCompletedCount(d), 0);
-    return {
-      disciplines: DATA.length,
-      totalLessons,
-      completed,
-      percent: totalLessons ? Math.round((completed / totalLessons) * 100) : 0
-    };
-  }
-
-  function formatCurrentDate() {
-    const d = new Date();
-    return `${dayMap[d.getDay()]}, ${d.getDate()} De ${monthNames[d.getMonth()]}`;
+  function setDonut(element, percent) {
+    element.style.setProperty('--progress', Math.max(0, Math.min(100, percent)));
+    element.setAttribute('aria-label', `${percent}% concluído`);
   }
 
   function renderDashboard() {
-    els.currentDate.textContent = formatCurrentDate();
-    renderToday();
-    renderGeneralProgress();
-    renderDisciplineCards();
+    const now = new Date();
+    $('#dashboardDate').textContent = formatDate(now);
+
+    const today = todaySubjects();
+    $('#todayCount').textContent = `${today.length} ${today.length === 1 ? 'matéria' : 'matérias'}`;
+    $('#todayList').innerHTML = today.length
+      ? today.map(subject => {
+          const next = nextLesson(subject);
+          return `<div class="today-item">
+            <div class="today-subject">${html(subject.name)}</div>
+            <div class="today-lesson">${next ? html(next.aula) : 'Disciplina concluída.'}</div>
+          </div>`;
+        }).join('')
+      : `<div class="today-empty">Não há disciplinas programadas para hoje. Use o tempo livre para revisar ou adiantar uma aula.</div>`;
+
+    const overall = overallProgress();
+    $('#generalPercent').textContent = `${overall.percent}%`;
+    $('#totalSubjects').textContent = subjects.length;
+    $('#totalLessons').textContent = overall.total;
+    $('#completedLessons').textContent = overall.done;
+    setDonut($('#generalDonut'), overall.percent);
+    $('#topbarStatus').textContent = `${overall.done}/${overall.total} aulas concluídas`;
+
+    const ranked = subjects
+      .map(subject => ({ subject, progress: subjectProgress(subject) }))
+      .sort((a, b) => b.progress.percent - a.progress.percent || b.progress.done - a.progress.done || a.subject.name.localeCompare(b.subject.name, 'pt-BR'));
+
+    $('#disciplineGrid').innerHTML = ranked.map(({ subject, progress }, index) => `
+      <article class="discipline-card">
+        <div class="discipline-card-header">
+          <h3>${html(subject.name)}</h3>
+          <span class="discipline-rank">#${index + 1}</span>
+        </div>
+        <div class="donut discipline-donut" style="--progress:${progress.percent}" aria-label="${progress.percent}% concluído">
+          <div class="donut-core"><strong>${progress.percent}%</strong><span>concluído</span></div>
+        </div>
+        <div class="discipline-footer">
+          <div>Aulas<strong>${progress.done}/${progress.total}</strong></div>
+          <div>Dia<strong>${capitalize(subject.day)}</strong></div>
+        </div>
+      </article>`).join('');
   }
 
-  function renderToday() {
-    const today = dayMap[new Date().getDay()];
-    const todayDisciplines = DATA.filter(d => String(d.day).trim() === today);
-    els.todayCount.textContent = String(todayDisciplines.length);
-    els.todayList.innerHTML = '';
+  function renderUpdate() {
+    const query = normalize($('#lessonSearch').value.trim());
+    const overall = overallProgress();
+    $('#updateSummary').textContent = `${overall.done} de ${overall.total} aulas concluídas`;
 
-    if (!todayDisciplines.length) {
-      els.todayList.innerHTML = '<p class="empty-inline">Nenhuma disciplina programada para hoje.</p>';
+    const visibleSubjects = subjects.map(subject => {
+      if (!query) return { ...subject, visibleLessons: subject.lessons };
+      const subjectMatches = normalize(subject.name).includes(query);
+      const visibleLessons = subjectMatches ? subject.lessons : subject.lessons.filter(lesson => normalize(lesson.aula).includes(query));
+      return { ...subject, visibleLessons };
+    }).filter(subject => subject.visibleLessons.length);
+
+    const container = $('#updateList');
+    if (!visibleSubjects.length) {
+      container.innerHTML = `<div class="panel no-results">Nenhuma aula encontrada para essa busca.</div>`;
       return;
     }
 
-    const frag = document.createDocumentFragment();
-    todayDisciplines.forEach(discipline => {
-      const next = getNextLesson(discipline);
-      const row = document.createElement('div');
-      row.className = 'today-item';
-      const lessonText = next ? next.title : 'Todas as aulas concluídas';
-      row.innerHTML = `
-        <span class="today-item__bar" aria-hidden="true"></span>
-        <div>
-          <strong class="today-item__title">${escapeHtml(discipline.name)}</strong>
-          <span class="today-item__lesson">${escapeHtml(lessonText)}</span>
-        </div>
-        <span class="today-item__progress">${getCompletedCount(discipline)}/${discipline.totalLessons}</span>
-      `;
-      frag.appendChild(row);
-    });
-    els.todayList.appendChild(frag);
-  }
+    container.innerHTML = visibleSubjects.map(subject => {
+      const progress = subjectProgress(subject);
+      const allDone = progress.done === progress.total;
+      const lessonsMarkup = subject.visibleLessons.map(lesson => {
+        const isDone = completed.has(lesson.id);
+        return `<div class="lesson-row ${isDone ? 'completed' : ''}">
+          <span class="lesson-number">${lesson.index + 1}</span>
+          <span class="lesson-title">${html(lesson.aula)}</span>
+          <button class="check-button" type="button" aria-label="${isDone ? 'Desmarcar' : 'Marcar'} aula ${lesson.index + 1} como concluída" aria-pressed="${isDone}" data-lesson-id="${html(lesson.id)}" data-subject="${html(subject.name)}" data-index="${lesson.index}">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 12.5 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>`;
+      }).join('');
 
-  function renderGeneralProgress() {
-    const t = totals();
-    setDonut(els.generalDonut, t.percent);
-    els.generalPercent.textContent = `${t.percent}%`;
-    els.generalDonut.setAttribute('aria-label', `${t.percent}% do total concluído`);
-    els.disciplineCount.textContent = String(t.disciplines);
-    els.lessonCount.textContent = formatNumber(t.totalLessons);
-    els.completedCount.textContent = formatNumber(t.completed);
-    els.updateSummary.textContent = `${formatNumber(t.completed)} de ${formatNumber(t.totalLessons)} aulas concluídas`;
-  }
-
-  function renderDisciplineCards() {
-    const sorted = [...DATA].sort((a, b) => {
-      const diff = getPercent(b) - getPercent(a);
-      return diff || a.name.localeCompare(b.name, 'pt-BR');
-    });
-
-    els.disciplineGrid.innerHTML = '';
-    const frag = document.createDocumentFragment();
-    sorted.forEach(discipline => {
-      const percent = getPercent(discipline);
-      const completed = getCompletedCount(discipline);
-      const card = document.createElement('article');
-      card.className = 'discipline-card';
-      card.innerHTML = `
-        <header class="discipline-card__header">
-          <h3 class="discipline-card__title">${escapeHtml(discipline.name)}</h3>
-          <span class="discipline-card__institution">${escapeHtml(discipline.institution)}</span>
-        </header>
-        <div class="discipline-card__chart">
-          <div class="donut" style="--p:${percent}" role="img" aria-label="${percent}% concluído em ${escapeAttr(discipline.name)}">
-            <div class="donut__center"><strong>${percent}%</strong><span>concluído</span></div>
+      return `<details class="subject-group" open>
+        <summary class="subject-summary">
+          <div class="subject-summary-main">
+            <h2>${html(subject.name)}</h2>
+            <div class="subject-meta">
+              <span>${progress.done}/${progress.total} concluídas</span>
+              <span class="mini-progress"><span style="width:${progress.percent}%"></span></span>
+              <span>${progress.percent}%</span>
+            </div>
           </div>
-        </div>
-        <footer class="discipline-card__footer">
-          <span>${completed} de ${discipline.totalLessons} aulas</span>
-          <span>${escapeHtml(String(discipline.day).trim())}</span>
-        </footer>
-      `;
-      frag.appendChild(card);
-    });
-    els.disciplineGrid.appendChild(frag);
+          <div class="subject-actions">
+            <button class="group-action" type="button" data-complete-subject="${html(subject.name)}">${allDone ? 'Desmarcar tudo' : 'Marcar tudo'}</button>
+            <svg class="chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+        </summary>
+        <div class="lesson-list">${lessonsMarkup}</div>
+      </details>`;
+    }).join('');
   }
 
-  function renderUpdates(filter = '') {
-    const q = normalize(filter);
-    const filtered = DATA.filter(d => !q || normalize(`${d.name} ${d.institution} ${d.day}`).includes(q));
-    els.updatesList.innerHTML = '';
-    els.updatesEmpty.hidden = filtered.length !== 0;
-
-    const frag = document.createDocumentFragment();
-    filtered.forEach(discipline => frag.appendChild(buildUpdateDiscipline(discipline)));
-    els.updatesList.appendChild(frag);
-    renderGeneralProgress();
+  function capitalize(value = '') {
+    return value.charAt(0).toLocaleUpperCase('pt-BR') + value.slice(1);
   }
 
-  function buildUpdateDiscipline(discipline) {
-    const details = document.createElement('details');
-    details.className = 'update-discipline';
-    details.dataset.disciplineId = discipline.id;
-
-    const completed = getCompletedCount(discipline);
-    const percent = getPercent(discipline);
-
-    const summary = document.createElement('summary');
-    summary.innerHTML = `
-      <div>
-        <div class="update-discipline__title">${escapeHtml(discipline.name)}</div>
-        <div class="update-discipline__meta">${escapeHtml(discipline.institution)} · ${escapeHtml(String(discipline.day).trim())}</div>
-      </div>
-      <div class="mini-progress"><strong>${percent}%</strong><span>${completed}/${discipline.totalLessons} aulas</span></div>
-      <span class="chevron" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 9l5 5 5-5"/></svg></span>
-    `;
-
-    const body = document.createElement('div');
-    body.className = 'update-discipline__body';
-    body.innerHTML = `
-      <div class="update-discipline__actions">
-        <button class="button button--secondary js-mark-all" type="button">${completed === discipline.totalLessons ? 'Desmarcar todas' : 'Marcar todas'}</button>
-      </div>
-      <div class="lessons-list"></div>
-    `;
-
-    const lessonsList = $('.lessons-list', body);
-    const checked = completedSet(discipline.id);
-    for (let n = 1; n <= discipline.totalLessons; n += 1) {
-      const label = document.createElement('label');
-      label.className = `lesson-row${checked.has(n) ? ' is-complete' : ''}`;
-      const title = getLessonTitle(discipline, n);
-      label.innerHTML = `
-        <input type="checkbox" data-lesson="${n}" ${checked.has(n) ? 'checked' : ''} aria-label="Marcar ${escapeAttr(title)} como concluída">
-        <span class="lesson-row__title">${escapeHtml(title)}</span>
-        <span class="lesson-row__number">${n}/${discipline.totalLessons}</span>
-      `;
-      const checkbox = $('input', label);
-      checkbox.addEventListener('change', (event) => onLessonToggle(event, discipline, n, label));
-      lessonsList.appendChild(label);
-    }
-
-    $('.js-mark-all', body).addEventListener('click', () => {
-      const ds = ensureDisciplineState(discipline.id);
-      if (getCompletedCount(discipline) === discipline.totalLessons) {
-        ds.completed = [];
-        showToast(`${discipline.name}: aulas desmarcadas.`);
-      } else {
-        ds.completed = Array.from({ length: discipline.totalLessons }, (_, i) => i + 1);
-        showToast(`${discipline.name}: todas as aulas concluídas.`);
-      }
-      saveState();
-      refreshAfterProgressChange(discipline.id, true);
-    });
-
-    details.append(summary, body);
-    return details;
-  }
-
-  function onLessonToggle(event, discipline, lessonNumber, label) {
-    const checkbox = event.currentTarget;
-    const ds = ensureDisciplineState(discipline.id);
-
-    if (!checkbox.checked) {
-      ds.completed = ds.completed.filter(n => n !== lessonNumber);
-      label.classList.remove('is-complete');
-      saveState();
-      refreshAfterProgressChange(discipline.id, true);
-      return;
-    }
-
-    const checked = completedSet(discipline.id);
-    const hasEarlierGaps = lessonNumber > 1 && Array.from({ length: lessonNumber - 1 }, (_, i) => i + 1).some(n => !checked.has(n));
-
-    if (hasEarlierGaps) {
-      checkbox.checked = false;
-      lastModalTrigger = checkbox;
-      modalContext = { discipline, lessonNumber };
-      els.modalDescription.textContent = `Você marcou ${getLessonTitle(discipline, lessonNumber)}. Deseja marcar também as aulas 1 a ${lessonNumber} como concluídas?`;
-      openModal();
-      return;
-    }
-
-    ds.completed = [...new Set([...ds.completed, lessonNumber])].sort((a, b) => a - b);
-    label.classList.add('is-complete');
-    saveState();
-    refreshAfterProgressChange(discipline.id, true);
-  }
-
-  function refreshAfterProgressChange(openDisciplineId = null, preserveScroll = false) {
-    const y = preserveScroll ? window.scrollY : 0;
-    const filter = els.disciplineSearch.value;
+  function refreshAll() {
     renderDashboard();
-    if (currentView === 'updates') {
-      renderUpdates(filter);
-      if (openDisciplineId) {
-        const target = els.updatesList.querySelector(`[data-discipline-id="${CSS.escape(openDisciplineId)}"]`);
-        if (target) target.open = true;
-      }
-    }
-    if (preserveScroll) requestAnimationFrame(() => window.scrollTo({ top: y, behavior: 'instant' }));
-  }
-
-  function openModal() {
-    els.modal.hidden = false;
-    els.modalBackdrop.hidden = false;
-    document.body.style.overflow = 'hidden';
-    requestAnimationFrame(() => els.modalMarkRange.focus());
-  }
-
-  function closeModal({ restoreFocus = true } = {}) {
-    els.modal.hidden = true;
-    els.modalBackdrop.hidden = true;
-    document.body.style.overflow = '';
-    modalContext = null;
-    if (restoreFocus && lastModalTrigger) lastModalTrigger.focus();
-    lastModalTrigger = null;
-  }
-
-  function commitModal(mode) {
-    if (!modalContext) return;
-    const { discipline, lessonNumber } = modalContext;
-    const ds = ensureDisciplineState(discipline.id);
-
-    if (mode === 'range') {
-      const range = Array.from({ length: lessonNumber }, (_, i) => i + 1);
-      ds.completed = [...new Set([...ds.completed, ...range])].sort((a, b) => a - b);
-      showToast(`${discipline.name}: aulas 1 a ${lessonNumber} concluídas.`);
-    } else if (mode === 'single') {
-      ds.completed = [...new Set([...ds.completed, lessonNumber])].sort((a, b) => a - b);
-      showToast(`${getLessonTitle(discipline, lessonNumber)} marcada como concluída.`);
-    }
-
-    saveState();
-    const id = discipline.id;
-    closeModal({ restoreFocus: false });
-    refreshAfterProgressChange(id, true);
+    renderUpdate();
   }
 
   function openDrawer() {
-    els.drawer.classList.add('is-open');
-    els.drawer.setAttribute('aria-hidden', 'false');
-    els.drawerBackdrop.hidden = false;
-    els.menuButton.setAttribute('aria-expanded', 'true');
-    document.body.style.overflow = 'hidden';
-    requestAnimationFrame(() => els.closeDrawerButton.focus());
+    $('#drawer').classList.add('open');
+    $('#drawer').setAttribute('aria-hidden', 'false');
+    $('#menuButton').setAttribute('aria-expanded', 'true');
+    $('#scrim').hidden = false;
   }
 
   function closeDrawer() {
-    els.drawer.classList.remove('is-open');
-    els.drawer.setAttribute('aria-hidden', 'true');
-    els.drawerBackdrop.hidden = true;
-    els.menuButton.setAttribute('aria-expanded', 'false');
-    document.body.style.overflow = '';
-    els.menuButton.focus({ preventScroll: true });
+    $('#drawer').classList.remove('open');
+    $('#drawer').setAttribute('aria-hidden', 'true');
+    $('#menuButton').setAttribute('aria-expanded', 'false');
+    $('#scrim').hidden = true;
   }
 
-  function switchView(view) {
-    if (!['dashboard', 'updates'].includes(view)) return;
-    currentView = view;
-    const dashboard = view === 'dashboard';
-    els.dashboardView.hidden = !dashboard;
-    els.updatesView.hidden = dashboard;
-    els.dashboardView.classList.toggle('is-active', dashboard);
-    els.updatesView.classList.toggle('is-active', !dashboard);
-    els.pageLabel.textContent = dashboard ? 'Dashboard' : 'Atualização das aulas';
-    els.navItems.forEach(item => item.classList.toggle('is-active', item.dataset.view === view));
-    if (!dashboard) renderUpdates(els.disciplineSearch.value);
+  function switchPage(page) {
+    currentPage = page;
+    $$('.page').forEach(el => {
+      const active = el.id === `page-${page}`;
+      el.classList.toggle('active', active);
+      el.hidden = !active;
+    });
+    $$('.nav-item').forEach(item => item.classList.toggle('active', item.dataset.page === page));
+    if (page === 'update') renderUpdate();
     else renderDashboard();
-    window.scrollTo({ top: 0, behavior: 'instant' });
     closeDrawer();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function updateTimerDisplay() {
-    const minutes = Math.floor(timerRemaining / 60);
-    const seconds = timerRemaining % 60;
-    els.timerDisplay.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  function handleLessonToggle(button) {
+    const subject = subjects.find(item => item.name === button.dataset.subject);
+    if (!subject) return;
+    const index = Number(button.dataset.index);
+    const lesson = subject.lessons[index];
+    const isDone = completed.has(lesson.id);
+
+    if (isDone) {
+      completed.delete(lesson.id);
+      saveCompleted();
+      refreshAll();
+      return;
+    }
+
+    const earlierIncomplete = subject.lessons.slice(0, index).some(item => !completed.has(item.id));
+    if (index > 0 && earlierIncomplete) {
+      pendingBatch = { subject, index, lesson };
+      $('#batchModalText').textContent = `Você marcou a aula ${index + 1} de ${subject.name}. Deseja marcar também todas as aulas da 1 à ${index + 1} como concluídas?`;
+      $('#batchLessonsButton').textContent = `Marcar 1–${index + 1}`;
+      $('#batchModal').showModal();
+      return;
+    }
+
+    completed.add(lesson.id);
+    saveCompleted();
+    refreshAll();
   }
 
-  function startTimer() {
-    if (timerRunning) return;
-    timerRunning = true;
-    els.timerToggle.textContent = 'Pausar';
-    const endAt = Date.now() + timerRemaining * 1000;
-    timerId = window.setInterval(() => {
-      timerRemaining = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
-      updateTimerDisplay();
-      if (timerRemaining <= 0) {
-        pauseTimer();
-        els.timerToggle.textContent = 'Iniciar novamente';
-        showToast('Ciclo de foco concluído.');
+  function resolveBatch(mode) {
+    if (!pendingBatch) return;
+    const { subject, index, lesson } = pendingBatch;
+    if (mode === 'batch') subject.lessons.slice(0, index + 1).forEach(item => completed.add(item.id));
+    else completed.add(lesson.id);
+    pendingBatch = null;
+    saveCompleted();
+    refreshAll();
+  }
+
+  function toggleSubject(name) {
+    const subject = subjects.find(item => item.name === name);
+    if (!subject) return;
+    const progress = subjectProgress(subject);
+    const allDone = progress.done === progress.total;
+    subject.lessons.forEach(lesson => allDone ? completed.delete(lesson.id) : completed.add(lesson.id));
+    saveCompleted();
+    refreshAll();
+  }
+
+  function openConfirm({ title, text, actionLabel, onConfirm }) {
+    $('#confirmModalTitle').textContent = title;
+    $('#confirmModalText').textContent = text;
+    $('#confirmModalAction').textContent = actionLabel;
+    pendingConfirmAction = onConfirm;
+    $('#confirmModal').showModal();
+  }
+
+  function markEverythingComplete() {
+    openConfirm({
+      title: 'Concluir todas as aulas?',
+      text: `Isso marcará as ${lessons.length} aulas das ${subjects.length} disciplinas como concluídas neste navegador.`,
+      actionLabel: 'Marcar tudo',
+      onConfirm: () => {
+        lessons.forEach(lesson => completed.add(lessonId(lesson)));
+        saveCompleted();
+        refreshAll();
       }
+    });
+  }
+
+  function resetProgress() {
+    openConfirm({
+      title: 'Apagar todo o progresso?',
+      text: 'Todas as marcações de aulas concluídas serão removidas deste navegador. Essa ação não altera a planilha original.',
+      actionLabel: 'Apagar progresso',
+      onConfirm: () => {
+        completed.clear();
+        saveCompleted();
+        refreshAll();
+        closeDrawer();
+      }
+    });
+  }
+
+  function renderTimer() {
+    if (timerState.running && timerState.endsAt) {
+      timerState.remaining = Math.max(0, Math.ceil((timerState.endsAt - Date.now()) / 1000));
+      if (timerState.remaining <= 0) {
+        timerState.running = false;
+        timerState.endsAt = null;
+        stopTimerInterval();
+        saveTimer();
+      }
+    }
+    const minutes = Math.floor(timerState.remaining / 60);
+    const seconds = timerState.remaining % 60;
+    $('#timerDisplay').textContent = `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;
+    $('#timerToggle').textContent = timerState.running ? 'Pausar' : (timerState.remaining === 0 ? 'Iniciar' : 'Iniciar');
+    document.title = timerState.running ? `${$('#timerDisplay').textContent} · Estudos` : 'Dashboard de Estudos';
+  }
+
+  function startTimerInterval() {
+    stopTimerInterval();
+    timerInterval = window.setInterval(() => {
+      renderTimer();
+      if (!timerState.running) return;
+      saveTimer();
     }, 250);
   }
 
-  function pauseTimer() {
-    timerRunning = false;
-    if (timerId) window.clearInterval(timerId);
-    timerId = null;
-    els.timerToggle.textContent = timerRemaining === 0 ? 'Iniciar novamente' : 'Iniciar';
+  function stopTimerInterval() {
+    if (timerInterval) window.clearInterval(timerInterval);
+    timerInterval = null;
+  }
+
+  function toggleTimer() {
+    if (timerState.running) {
+      timerState.remaining = Math.max(0, Math.ceil((timerState.endsAt - Date.now()) / 1000));
+      timerState.running = false;
+      timerState.endsAt = null;
+      stopTimerInterval();
+    } else {
+      if (timerState.remaining <= 0) timerState.remaining = DEFAULT_TIMER_SECONDS;
+      timerState.running = true;
+      timerState.endsAt = Date.now() + timerState.remaining * 1000;
+      startTimerInterval();
+    }
+    saveTimer();
+    renderTimer();
   }
 
   function resetTimer() {
-    pauseTimer();
-    timerRemaining = TIMER_SECONDS;
-    updateTimerDisplay();
-    els.timerToggle.textContent = 'Iniciar';
+    timerState = { remaining: DEFAULT_TIMER_SECONDS, running: false, endsAt: null };
+    stopTimerInterval();
+    saveTimer();
+    renderTimer();
   }
 
-  function showToast(message) {
-    els.toast.textContent = message;
-    els.toast.classList.add('is-visible');
-    window.clearTimeout(toastTimer);
-    toastTimer = window.setTimeout(() => els.toast.classList.remove('is-visible'), 2600);
-  }
+  $('#menuButton').addEventListener('click', openDrawer);
+  $('#closeMenuButton').addEventListener('click', closeDrawer);
+  $('#scrim').addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') closeDrawer(); });
+  $$('.nav-item').forEach(item => item.addEventListener('click', () => switchPage(item.dataset.page)));
 
-  function markEverything() {
-    const t = totals();
-    const allDone = t.completed === t.totalLessons && t.totalLessons > 0;
-    const action = allDone ? 'desmarcar todas as aulas' : 'marcar todas as aulas como concluídas';
-    if (!window.confirm(`Deseja ${action}?`)) return;
-    DATA.forEach(d => {
-      ensureDisciplineState(d.id).completed = allDone ? [] : Array.from({ length: d.totalLessons }, (_, i) => i + 1);
-    });
-    saveState();
-    renderDashboard();
-    renderUpdates(els.disciplineSearch.value);
-    showToast(allDone ? 'Todas as aulas foram desmarcadas.' : 'Todas as aulas foram marcadas como concluídas.');
-  }
-
-  function setDonut(el, percent) {
-    el.style.setProperty('--p', String(Math.max(0, Math.min(100, percent))));
-  }
-
-  function normalize(value) {
-    return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-  }
-
-  function formatNumber(n) {
-    return new Intl.NumberFormat('pt-BR').format(n);
-  }
-
-  function escapeHtml(value) {
-    return String(value).replace(/[&<>'"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[ch]));
-  }
-
-  function escapeAttr(value) {
-    return escapeHtml(value).replace(/`/g, '&#96;');
-  }
-
-  els.menuButton.addEventListener('click', openDrawer);
-  els.closeDrawerButton.addEventListener('click', closeDrawer);
-  els.drawerBackdrop.addEventListener('click', closeDrawer);
-  els.navItems.forEach(item => item.addEventListener('click', () => switchView(item.dataset.view)));
-
-  els.timerToggle.addEventListener('click', () => {
-    if (timerRemaining === 0) resetTimer();
-    timerRunning ? pauseTimer() : startTimer();
-  });
-  els.timerReset.addEventListener('click', resetTimer);
-
-  els.disciplineSearch.addEventListener('input', (e) => renderUpdates(e.currentTarget.value));
-  els.markEverythingButton.addEventListener('click', markEverything);
-
-  els.modalMarkRange.addEventListener('click', () => commitModal('range'));
-  els.modalMarkSingle.addEventListener('click', () => commitModal('single'));
-  els.modalCancel.addEventListener('click', () => closeModal());
-  els.modalCloseButton.addEventListener('click', () => closeModal());
-  els.modalBackdrop.addEventListener('click', () => closeModal());
-
-  document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return;
-    if (!els.modal.hidden) closeModal();
-    else if (els.drawer.classList.contains('is-open')) closeDrawer();
+  $('#lessonSearch').addEventListener('input', renderUpdate);
+  $('#updateList').addEventListener('click', event => {
+    const button = event.target.closest('.check-button');
+    if (button) return handleLessonToggle(button);
+    const subjectButton = event.target.closest('[data-complete-subject]');
+    if (subjectButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleSubject(subjectButton.dataset.completeSubject);
+    }
   });
 
-  DATA.forEach(d => ensureDisciplineState(d.id));
-  renderDashboard();
-  updateTimerDisplay();
+  $('#batchModal').addEventListener('close', () => {
+    if (!pendingBatch) return;
+    const mode = $('#batchModal').returnValue;
+    if (mode === 'single' || mode === 'batch') resolveBatch(mode);
+    else pendingBatch = null;
+  });
+
+  $('#confirmModal').addEventListener('close', () => {
+    const action = pendingConfirmAction;
+    pendingConfirmAction = null;
+    if ($('#confirmModal').returnValue === 'confirm' && typeof action === 'function') action();
+  });
+
+  $('#completeAllButton').addEventListener('click', markEverythingComplete);
+  $('#resetProgressButton').addEventListener('click', resetProgress);
+  $('#timerToggle').addEventListener('click', toggleTimer);
+  $('#timerReset').addEventListener('click', resetTimer);
+
+  renderTimer();
+  if (timerState.running) startTimerInterval();
+  refreshAll();
 })();

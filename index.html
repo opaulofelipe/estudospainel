@@ -1,160 +1,161 @@
 <!doctype html>
 <html lang="pt-BR">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f7faf8">
-  <meta name="color-scheme" content="light">
-  <title>Estudos — Dashboard</title>
-  <link rel="stylesheet" href="styles.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f7faf9" />
+  <title>Dashboard de Estudos</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="topbar__inner">
-      <button class="icon-button" id="menuButton" type="button" aria-label="Abrir menu" aria-controls="appDrawer" aria-expanded="false">
-        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  <div class="app-shell">
+    <header class="topbar">
+      <button class="icon-button" id="menuButton" type="button" aria-label="Abrir menu" aria-controls="drawer" aria-expanded="false">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       </button>
       <div class="brand" aria-label="Estudos">
-        <span class="brand__mark" aria-hidden="true">E</span>
-        <span class="brand__name">Estudos</span>
+        <span class="brand-mark">E</span>
+        <span>Estudos</span>
       </div>
-      <span class="topbar__page" id="pageLabel">Dashboard</span>
-    </div>
-  </header>
+      <div class="topbar-status" id="topbarStatus" aria-live="polite"></div>
+    </header>
 
-  <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
-  <aside class="drawer" id="appDrawer" aria-hidden="true" aria-label="Navegação principal">
-    <div class="drawer__header">
-      <div class="brand">
-        <span class="brand__mark" aria-hidden="true">E</span>
-        <span class="brand__name">Estudos</span>
+    <aside class="drawer" id="drawer" aria-hidden="true">
+      <div class="drawer-header">
+        <div class="brand"><span class="brand-mark">E</span><span>Estudos</span></div>
+        <button class="icon-button" id="closeMenuButton" type="button" aria-label="Fechar menu">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
       </div>
-      <button class="icon-button" id="closeDrawerButton" type="button" aria-label="Fechar menu">
-        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
-      </button>
-    </div>
-    <nav class="drawer__nav">
-      <button class="nav-item is-active" type="button" data-view="dashboard">
-        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v10h-6zM4 14h6v6H4zM14 18h6v2h-6z"/></svg>
-        <span>Dashboard</span>
-      </button>
-      <button class="nav-item" type="button" data-view="updates">
-        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg>
-        <span>Atualização das aulas</span>
-      </button>
-    </nav>
-    <div class="drawer__footer">Progresso salvo neste navegador.</div>
-  </aside>
-
-  <main class="shell">
-    <section class="view is-active" id="dashboardView" data-view-panel="dashboard" aria-labelledby="dashboardTitle">
-      <div class="page-heading">
-        <p class="current-date" id="currentDate">—</p>
-        <h1 class="sr-only" id="dashboardTitle">Dashboard de estudos</h1>
+      <nav class="drawer-nav" aria-label="Navegação principal">
+        <button class="nav-item active" data-page="dashboard" type="button">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 4h6v6H4V4Zm10 0h6v10h-6V4ZM4 14h6v6H4v-6Zm10 4h6v2h-6v-2Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+          <span>Dashboard</span>
+        </button>
+        <button class="nav-item" data-page="update" type="button">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 4h12v16H6V4Zm3 4h6M9 12h6M9 16h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Atualização das aulas</span>
+        </button>
+      </nav>
+      <div class="drawer-footer">
+        <p>Progresso salvo neste navegador.</p>
+        <button id="resetProgressButton" class="text-button danger" type="button">Apagar progresso</button>
       </div>
+    </aside>
+    <div class="scrim" id="scrim" hidden></div>
 
-      <section class="overview-grid" aria-label="Resumo do dia e progresso geral">
-        <article class="panel today-panel">
-          <div class="panel__heading">
-            <div>
-              <p class="eyebrow">Agenda</p>
-              <h2>Matérias de hoje</h2>
+    <main class="main-content">
+      <section class="page active" id="page-dashboard" aria-labelledby="dashboardDate">
+        <p class="current-date" id="dashboardDate"></p>
+
+        <div class="hero-grid">
+          <article class="panel today-panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Agenda</p>
+                <h1>Matérias de hoje</h1>
+              </div>
+              <span class="soft-badge" id="todayCount"></span>
             </div>
-            <span class="count-badge" id="todayCount">0</span>
-          </div>
-          <div class="today-list" id="todayList"></div>
-        </article>
+            <div class="today-list" id="todayList"></div>
+          </article>
 
-        <article class="panel progress-panel">
-          <div class="panel__heading">
-            <div>
-              <p class="eyebrow">Visão geral</p>
-              <h2>Progresso geral</h2>
-            </div>
-          </div>
-          <div class="progress-overview">
-            <div class="donut donut--large" id="generalDonut" role="img" aria-label="0% do total concluído">
-              <div class="donut__center">
-                <strong id="generalPercent">0%</strong>
-                <span>concluído</span>
+          <article class="panel progress-panel">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Visão geral</p>
+                <h2>Progresso geral</h2>
               </div>
             </div>
-            <dl class="stats-list">
-              <div><dt>Disciplinas</dt><dd id="disciplineCount">0</dd></div>
-              <div><dt>Total de aulas</dt><dd id="lessonCount">0</dd></div>
-              <div><dt>Aulas concluídas</dt><dd id="completedCount">0</dd></div>
-            </dl>
+            <div class="progress-overview">
+              <div class="donut general-donut" id="generalDonut" aria-label="Progresso geral">
+                <div class="donut-core">
+                  <strong id="generalPercent">0%</strong>
+                  <span>concluído</span>
+                </div>
+              </div>
+              <dl class="stats-grid">
+                <div><dt>Disciplinas</dt><dd id="totalSubjects">0</dd></div>
+                <div><dt>Total de aulas</dt><dd id="totalLessons">0</dd></div>
+                <div class="wide"><dt>Aulas concluídas</dt><dd id="completedLessons">0</dd></div>
+              </dl>
+            </div>
+          </article>
+        </div>
+
+        <article class="panel focus-panel">
+          <div class="focus-copy">
+            <p class="eyebrow">Foco</p>
+            <h2>Uma sessão por vez.</h2>
+            <p>Timer Pomodoro de 25 minutos para manter a atenção no bloco atual.</p>
+          </div>
+          <div class="timer-wrap">
+            <div class="timer" id="timerDisplay" aria-live="polite">25:00</div>
+            <div class="timer-actions">
+              <button class="primary-button" id="timerToggle" type="button">Iniciar</button>
+              <button class="secondary-button" id="timerReset" type="button">Reiniciar</button>
+            </div>
           </div>
         </article>
-      </section>
 
-      <section class="focus-card" aria-labelledby="focusTitle">
-        <div class="focus-card__copy">
-          <p class="eyebrow">Concentração</p>
-          <h2 id="focusTitle">Foco</h2>
-          <p>Um ciclo curto para estudar sem transformar o cronômetro em mais uma tarefa.</p>
-        </div>
-        <div class="timer" aria-live="polite" aria-atomic="true">
-          <span id="timerDisplay">25:00</span>
-        </div>
-        <div class="timer-actions">
-          <button class="button button--primary" id="timerToggle" type="button">Iniciar</button>
-          <button class="button button--secondary" id="timerReset" type="button">Reiniciar</button>
-        </div>
-      </section>
-
-      <section class="disciplines-section" aria-labelledby="disciplinesTitle">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Panorama</p>
-            <h2 id="disciplinesTitle">Disciplinas</h2>
+        <section class="disciplines-section" aria-labelledby="disciplinesTitle">
+          <div class="section-heading disciplines-heading">
+            <div>
+              <p class="eyebrow">Desempenho</p>
+              <h2 id="disciplinesTitle">Disciplinas</h2>
+            </div>
+            <p>Ordenadas pelo maior percentual concluído.</p>
           </div>
-          <p>Ordenadas por maior percentual concluído.</p>
-        </div>
-        <div class="discipline-grid" id="disciplineGrid"></div>
+          <div class="discipline-grid" id="disciplineGrid"></div>
+        </section>
       </section>
-    </section>
 
-    <section class="view" id="updatesView" data-view-panel="updates" aria-labelledby="updatesTitle" hidden>
-      <div class="updates-heading">
-        <div>
-          <p class="eyebrow">Controle</p>
-          <h1 id="updatesTitle">Atualização das aulas</h1>
-          <p>Marque o que já foi concluído. O dashboard é atualizado imediatamente.</p>
+      <section class="page" id="page-update" aria-labelledby="updateTitle" hidden>
+        <div class="page-header">
+          <div>
+            <p class="eyebrow">Progresso</p>
+            <h1 id="updateTitle">Atualização das aulas</h1>
+            <p>Marque as aulas concluídas. Ao avançar para uma aula posterior, você pode concluir todas as anteriores de uma vez.</p>
+          </div>
+          <button class="secondary-button" id="completeAllButton" type="button">Marcar tudo concluído</button>
         </div>
-        <button class="button button--danger-quiet" id="markEverythingButton" type="button">Marcar tudo concluído</button>
+
+        <div class="update-toolbar panel">
+          <label class="search-field">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            <input id="lessonSearch" type="search" placeholder="Buscar disciplina ou aula" autocomplete="off" />
+          </label>
+          <span id="updateSummary" class="toolbar-summary"></span>
+        </div>
+
+        <div class="update-list" id="updateList"></div>
+      </section>
+    </main>
+  </div>
+
+  <dialog class="modal" id="batchModal">
+    <form method="dialog" class="modal-card">
+      <div class="modal-icon" aria-hidden="true">✓</div>
+      <h2 id="batchModalTitle">Concluir aulas anteriores?</h2>
+      <p id="batchModalText"></p>
+      <div class="modal-actions">
+        <button class="secondary-button" id="singleLessonButton" value="single">Só esta aula</button>
+        <button class="primary-button" id="batchLessonsButton" value="batch">Marcar anteriores</button>
       </div>
+    </form>
+  </dialog>
 
-      <div class="updates-toolbar" role="search">
-        <label class="search-field">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/></svg>
-          <span class="sr-only">Buscar disciplina</span>
-          <input id="disciplineSearch" type="search" placeholder="Buscar disciplina" autocomplete="off">
-        </label>
-        <span class="toolbar-summary" id="updateSummary">0 de 0 aulas concluídas</span>
+  <dialog class="modal" id="confirmModal">
+    <form method="dialog" class="modal-card">
+      <div class="modal-icon warning" aria-hidden="true">!</div>
+      <h2 id="confirmModalTitle">Confirmar ação</h2>
+      <p id="confirmModalText"></p>
+      <div class="modal-actions">
+        <button class="secondary-button" value="cancel">Cancelar</button>
+        <button class="primary-button" id="confirmModalAction" value="confirm">Confirmar</button>
       </div>
-
-      <div class="updates-list" id="updatesList"></div>
-      <p class="empty-state" id="updatesEmpty" hidden>Nenhuma disciplina encontrada.</p>
-    </section>
-  </main>
-
-  <div class="modal-backdrop" id="modalBackdrop" hidden></div>
-  <section class="modal" id="sequenceModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalDescription" hidden>
-    <button class="modal__close icon-button" id="modalCloseButton" type="button" aria-label="Fechar">
-      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
-    </button>
-    <p class="eyebrow">Atualização em sequência</p>
-    <h2 id="modalTitle">Marcar aulas anteriores?</h2>
-    <p id="modalDescription">—</p>
-    <div class="modal__actions">
-      <button class="button button--primary" id="modalMarkRange" type="button">Sim, marcar sequência</button>
-      <button class="button button--secondary" id="modalMarkSingle" type="button">Só esta aula</button>
-      <button class="button button--ghost" id="modalCancel" type="button">Cancelar</button>
-    </div>
-  </section>
-
-  <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+    </form>
+  </dialog>
 
   <script src="data.js"></script>
   <script src="app.js"></script>
